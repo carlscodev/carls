@@ -1,8 +1,1 @@
-{
-  "version": "0.3.6",
-  "name": "Carls Desktop 0.3.6",
-  "url": "https://github.com/carlscodev/carls/releases/tag/v0.3.6",
-  "prerelease": true,
-  "publishedAt": "2026-11-17T00:00:00Z",
-  "notes": "MCP administrable desde la app, borrado de sesiones, CLI compilada."
-}
+{"version":"0.3.6","name":"Carls 0.3.6","url":"https://github.com/carlscodev/carls/releases/tag/v0.3.6","prerelease":true,"publishedAt":"2026-11-17T17:16:35Z","notes":"Escritorio 0.3.6 y CLI compilada: binario unico en Windows, bundle en Linux."}
