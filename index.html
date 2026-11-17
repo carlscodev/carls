@@ -517,7 +517,7 @@
     <main id="top">
       <section class="hero">
         <div class="wrap">
-          <span class="eyebrow"><b>v0.3.6</b> beta pública · escritorio + terminal</span>
+          <span class="eyebrow"><b>v0.3.7</b> beta pública · escritorio + terminal</span>
           <h1>Un agente que <em>termina</em> el trabajo.</h1>
           <p class="lede">
             carls lee tu proyecto, edita archivos, ejecuta los tests y verifica hasta que pasan. Corre nativo
@@ -584,6 +584,7 @@
               <button class="tab" role="tab" aria-selected="true" data-pane="p-sub">Sub-agentes</button>
               <button class="tab" role="tab" aria-selected="false" data-pane="p-mcp">Servidores MCP</button>
               <button class="tab" role="tab" aria-selected="false" data-pane="p-files">Explorador</button>
+              <button class="tab" role="tab" aria-selected="false" data-pane="p-audio">Modo audio</button>
               <button class="tab" role="tab" aria-selected="false" data-pane="p-light">Tema claro</button>
             </div>
             <div class="panes">
@@ -613,6 +614,15 @@
                   </div>
                 </div>
                 <figcaption>el workspace real, dentro del mismo sandbox que usan las herramientas</figcaption>
+              </figure>
+              <figure class="pane" data-pane="p-audio">
+                <div class="frame">
+                  <div class="frame-inner">
+                    <div class="frame-bar"><i></i><i></i><i></i><span>modo audio · dictado</span></div>
+                    <img loading="lazy" src="assets/audio.png" alt="El composer con la transcripción de una nota de voz ya escrita, lista para editar o enviar." />
+                  </div>
+                </div>
+                <figcaption>hablás, se transcribe y cae en el composer: nada se envía solo</figcaption>
               </figure>
               <figure class="pane" data-pane="p-light">
                 <div class="frame">
@@ -688,6 +698,11 @@
               <h3>MCP, con o sin presets</h3>
               <p>Servidores MCP por stdio o remotos, agregados desde la app o desde el archivo. Sus herramientas se llaman como cualquier otra y se ven en el transcript.</p>
             </div>
+            <div class="card">
+              <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" /><path d="M6 11a6 6 0 0 0 12 0M12 17v3M9 20h6" /></svg></div>
+              <h3>Modo audio</h3>
+              <p>Hablás en vez de escribir. La nota de voz se transcribe y cae en el composer para que la corrijas: nunca se envía sola, ni en <code>yolo</code>. Cualquier endpoint compatible con <code>/audio/transcriptions</code> sirve, incluido uno local.</p>
+            </div>
           </div>
 
           <div class="packs reveal" aria-label="Packs de herramientas">
@@ -744,7 +759,7 @@
             <span class="kicker">Descargas</span>
             <h2>Elegí cómo lo querés.</h2>
             <p>
-              Todo es la versión <strong>0.3.6</strong>. El escritorio es un instalador por usuario (sin
+              Todo es la versión <strong>0.3.7</strong>. El escritorio es un instalador por usuario (sin
               permisos de administrador) o un portable; la CLI es un binario suelto.
             </p>
           </div>
@@ -758,8 +773,8 @@
               <p>Instalador por usuario: elegís carpeta, accesos en el escritorio y el menú de inicio. Sin admin.</p>
               <div class="meta"><span>~125 MB</span><span>NSIS</span><span>sin firmar</span></div>
               <div class="actions">
-                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-0.3.6-win-x64-setup.exe">Descargar .exe</a>
-                <a class="btn" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-0.3.6-win-x64.zip">Portable .zip</a>
+                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.7/Carls-0.3.7-win-x64-setup.exe">Descargar .exe</a>
+                <a class="btn" href="https://github.com/carlscodev/carls/releases/download/v0.3.7/Carls-0.3.7-win-x64.zip">Portable .zip</a>
               </div>
             </div>
 
@@ -771,7 +786,7 @@
               <p>Tar con el binario y sus dependencias. Las instrucciones están en el <code>README-linux.txt</code> del paquete.</p>
               <div class="meta"><span>~131 MB</span><span>tar.gz</span><span>sin firmar</span></div>
               <div class="actions">
-                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-0.3.6-linux-x64.tar.gz">Descargar .tar.gz</a>
+                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.7/Carls-0.3.7-linux-x64.tar.gz">Descargar .tar.gz</a>
               </div>
             </div>
 
@@ -783,7 +798,7 @@
               <p>Un solo <code>carls.exe</code> con todo adentro. No necesita Node ni el repositorio.</p>
               <div class="meta"><span>~38 MB</span><span>zip</span><span>binario único</span></div>
               <div class="actions">
-                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-CLI-0.3.6-win-x64.zip">Descargar .zip</a>
+                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.7/Carls-CLI-0.3.7-win-x64.zip">Descargar .zip</a>
               </div>
             </div>
 
@@ -795,7 +810,7 @@
               <p>El bundle compilado y un launcher; usa el <code>node</code> 20+ que ya tengas instalado.</p>
               <div class="meta"><span>~540 KB</span><span>tar.gz</span><span>requiere node</span></div>
               <div class="actions">
-                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-CLI-0.3.6-linux-x64.tar.gz">Descargar .tar.gz</a>
+                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.7/Carls-CLI-0.3.7-linux-x64.tar.gz">Descargar .tar.gz</a>
               </div>
             </div>
           </div>
@@ -871,7 +886,7 @@
 
     <footer>
       <div class="wrap footer-inner">
-        <span>carls · v0.3.6 · beta — construido y verificado en Windows</span>
+        <span>carls · v0.3.7 · beta — construido y verificado en Windows</span>
         <span>
           <a href="#top">Arriba</a> ·
           <a href="https://github.com/carlscodev/carls/releases">Versiones</a> ·
