@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>carls — un agente de código que corre en tu máquina</title>
+    <meta
+      name="description"
+      content="carls es un agente autónomo de programación para tu escritorio y tu terminal. Lee el proyecto, edita, ejecuta los tests y verifica hasta que pasa. Sin contenedores, sin telemetría, con tus propias claves."
+    />
+    <meta name="theme-color" content="#000000" />
+    <meta property="og:title" content="carls — agente de código en tu máquina" />
+    <meta
+      property="og:description"
+      content="Agente autónomo de programación: escritorio nativo y CLI. Lee, edita, ejecuta y verifica. Tus claves, tu máquina."
+    />
+    <meta property="og:image" content="assets/product.png" />
+    <link rel="icon" href="assets/icon.png" />
+    <style>
+      /* ─── tokens ────────────────────────────────────────────────────────── */
+      :root {
+        --accent: #34e5a1;
+        --accent-soft: rgba(52, 229, 161, 0.14);
+        --accent-line: rgba(52, 229, 161, 0.32);
+        --radius: 20px;
+        --radius-sm: 12px;
+        --ease: cubic-bezier(0.22, 1, 0.36, 1);
+        --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+        --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color-scheme: dark;
+      }
+
+      html[data-theme="dark"] {
+        --bg: #000000;
+        --bg-lift: #070a09;
+        --surface: rgba(255, 255, 255, 0.045);
+        --surface-strong: rgba(255, 255, 255, 0.08);
+        --line: rgba(255, 255, 255, 0.1);
+        --line-strong: rgba(255, 255, 255, 0.18);
+        --ink: #f2f6f4;
+        --ink-soft: #a7b3ae;
+        --ink-faint: #6d7a75;
+        --glow: radial-gradient(60% 50% at 50% 0%, rgba(52, 229, 161, 0.16), transparent 70%);
+        --shadow: 0 40px 120px -40px rgba(0, 0, 0, 0.9);
+      }
+
+      html[data-theme="light"] {
+        --bg: #f2f1ec;
+        --bg-lift: #eae9e3;
+        --surface: rgba(255, 255, 255, 0.62);
+        --surface-strong: rgba(255, 255, 255, 0.86);
+        --line: rgba(18, 32, 28, 0.1);
+        --line-strong: rgba(18, 32, 28, 0.2);
+        --ink: #101815;
+        --ink-soft: #4a5852;
+        --ink-faint: #77837e;
+        --accent: #0a7f57;
+        --accent-soft: rgba(10, 127, 87, 0.1);
+        --accent-line: rgba(10, 127, 87, 0.28);
+        --glow: radial-gradient(60% 50% at 50% 0%, rgba(10, 127, 87, 0.12), transparent 70%);
+        --shadow: 0 40px 120px -50px rgba(16, 24, 21, 0.35);
+        color-scheme: light;
+      }
+
+      * { box-sizing: border-box; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        overflow-x: hidden;
+        transition: background 0.5s var(--ease), color 0.5s var(--ease);
+      }
+
+      ::selection { background: var(--accent); color: #04120c; }
+
+      a { color: inherit; text-decoration: none; }
+
+      .wrap { width: min(1180px, calc(100% - 44px)); margin: 0 auto; }
+
+      /* ─── ambient light ─────────────────────────────────────────────────── */
+      .ambient {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: var(--glow);
+        z-index: 0;
+      }
+      .ambient::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(circle at 1px 1px, var(--line) 1px, transparent 0);
+        background-size: 34px 34px;
+        opacity: 0.45;
+        mask-image: radial-gradient(70% 60% at 50% 20%, #000 20%, transparent 78%);
+      }
+
+      /* ─── nav ───────────────────────────────────────────────────────────── */
+      header.nav {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        backdrop-filter: blur(18px) saturate(160%);
+        -webkit-backdrop-filter: blur(18px) saturate(160%);
+        background: color-mix(in oklab, var(--bg) 62%, transparent);
+        border-bottom: 1px solid transparent;
+        transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
+      }
+      header.nav.scrolled { border-bottom-color: var(--line); }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        height: 64px;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -0.02em; }
+      .brand img { width: 26px; height: 26px; border-radius: 7px; }
+      .brand span.dot {
+        width: 7px; height: 7px; border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 0 4px var(--accent-soft);
+      }
+      .nav-links { display: flex; gap: 4px; margin-left: auto; }
+      .nav-links a {
+        padding: 8px 12px;
+        border-radius: 999px;
+        color: var(--ink-soft);
+        font-size: 14px;
+        transition: color 0.2s, background 0.2s;
+      }
+      .nav-links a:hover { color: var(--ink); background: var(--surface); }
+      @media (max-width: 860px) { .nav-links { display: none; } }
+
+      .icon-btn {
+        display: grid;
+        place-items: center;
+        width: 36px; height: 36px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink);
+        cursor: pointer;
+        transition: transform 0.25s var(--ease), border-color 0.25s, background 0.25s;
+      }
+      .icon-btn:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+      .icon-btn svg { width: 17px; height: 17px; }
+      html[data-theme="dark"] .sun { display: block; }
+      html[data-theme="dark"] .moon { display: none; }
+      html[data-theme="light"] .sun { display: none; }
+      html[data-theme="light"] .moon { display: block; }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 11px 18px;
+        border-radius: 999px;
+        font-size: 14.5px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        color: var(--ink);
+        cursor: pointer;
+        transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease), background 0.25s;
+        will-change: transform;
+      }
+      .btn:hover { transform: translateY(-2px); box-shadow: 0 14px 34px -18px rgba(0, 0, 0, 0.8); }
+      .btn-accent {
+        background: var(--accent);
+        color: #04120c;
+        border-color: transparent;
+        box-shadow: 0 12px 40px -14px var(--accent);
+      }
+      .btn-accent:hover { box-shadow: 0 20px 50px -16px var(--accent); }
+      .btn svg { width: 16px; height: 16px; }
+
+      /* ─── hero ──────────────────────────────────────────────────────────── */
+      .hero {
+        position: relative;
+        z-index: 1;
+        padding: 74px 0 24px;
+        text-align: center;
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 6px 13px 6px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        font-size: 12.5px;
+        letter-spacing: 0.01em;
+        color: var(--ink-soft);
+        font-family: var(--mono);
+      }
+      .eyebrow b {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 600;
+      }
+      h1 {
+        margin: 22px auto 0;
+        max-width: 15ch;
+        font-size: clamp(42px, 7.2vw, 88px);
+        line-height: 0.98;
+        letter-spacing: -0.045em;
+        font-weight: 640;
+        text-wrap: balance;
+      }
+      h1 em {
+        font-style: normal;
+        background: linear-gradient(100deg, var(--accent), color-mix(in oklab, var(--accent) 40%, var(--ink)));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .lede {
+        margin: 24px auto 0;
+        max-width: 62ch;
+        font-size: clamp(16px, 1.6vw, 19px);
+        color: var(--ink-soft);
+        text-wrap: pretty;
+      }
+      .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 32px; }
+      .cta-note { margin-top: 16px; font-size: 13px; color: var(--ink-faint); font-family: var(--mono); }
+
+      /* ─── screenshot frame ──────────────────────────────────────────────── */
+      .frame {
+        position: relative;
+        margin: 46px auto 0;
+        border-radius: var(--radius);
+        padding: 1px;
+        background: linear-gradient(160deg, var(--line-strong), transparent 42%, var(--line));
+        box-shadow: var(--shadow);
+      }
+      .frame-inner {
+        border-radius: calc(var(--radius) - 1px);
+        overflow: hidden;
+        background: var(--bg-lift);
+        position: relative;
+      }
+      .frame-bar {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in oklab, var(--surface-strong) 60%, transparent);
+      }
+      .frame-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
+      .frame-bar span {
+        margin-left: 10px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--ink-faint);
+      }
+      .frame img { display: block; width: 100%; height: auto; }
+
+      /* ─── marquee stats ─────────────────────────────────────────────────── */
+      .strip {
+        position: relative;
+        z-index: 1;
+        margin-top: 42px;
+        border-block: 1px solid var(--line);
+        background: color-mix(in oklab, var(--surface) 50%, transparent);
+      }
+      .strip-inner {
+        display: flex;
+        gap: 46px;
+        padding: 18px 0 18px 8%;
+        overflow: hidden;
+        mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+      }
+      .strip-track { display: flex; gap: 46px; flex: none; animation: slide 34s linear infinite; }
+      .strip-inner:hover .strip-track { animation-play-state: paused; }
+      @keyframes slide { to { transform: translateX(-100%); } }
+      .stat {
+        display: flex;
+        align-items: baseline;
+        gap: 9px;
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--ink-faint);
+        white-space: nowrap;
+      }
+      .stat b { font-size: 17px; color: var(--ink); font-weight: 600; letter-spacing: -0.02em; }
+
+      /* ─── sections ──────────────────────────────────────────────────────── */
+      section { position: relative; z-index: 1; padding: 96px 0; }
+      .section-head { max-width: 720px; }
+      .kicker {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+      h2 {
+        margin: 14px 0 0;
+        font-size: clamp(30px, 4vw, 46px);
+        line-height: 1.05;
+        letter-spacing: -0.035em;
+        font-weight: 620;
+        text-wrap: balance;
+      }
+      .section-head p { margin: 16px 0 0; color: var(--ink-soft); font-size: 17px; text-wrap: pretty; }
+
+      .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
+      @media (max-width: 900px) { .grid-3 { grid-template-columns: 1fr; } }
+
+      .card {
+        position: relative;
+        padding: 24px;
+        border-radius: var(--radius);
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, var(--surface), transparent 140%);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        overflow: hidden;
+        transition: transform 0.4s var(--ease), border-color 0.4s, background 0.4s;
+      }
+      .card:hover { transform: translateY(-3px); border-color: var(--line-strong); }
+      .card h3 { margin: 16px 0 8px; font-size: 17.5px; letter-spacing: -0.02em; font-weight: 620; }
+      .card p { margin: 0; color: var(--ink-soft); font-size: 14.5px; }
+      .card .glyph {
+        display: grid;
+        place-items: center;
+        width: 38px; height: 38px;
+        border-radius: 11px;
+        border: 1px solid var(--accent-line);
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .card .glyph svg { width: 18px; height: 18px; }
+
+      /* ─── tabs viewer ───────────────────────────────────────────────────── */
+      .viewer { margin-top: 40px; }
+      .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+      .tab {
+        padding: 9px 15px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--ink-soft);
+        font-size: 13.5px;
+        font-weight: 550;
+        cursor: pointer;
+        transition: all 0.25s var(--ease);
+      }
+      .tab[aria-selected="true"] {
+        background: var(--accent-soft);
+        border-color: var(--accent-line);
+        color: var(--accent);
+      }
+      .panes { position: relative; }
+      .pane { display: none; }
+      .pane[data-active="true"] { display: block; animation: fade 0.5s var(--ease); }
+      @keyframes fade { from { opacity: 0; transform: translateY(8px); } }
+      .pane figcaption {
+        margin-top: 14px;
+        font-size: 13.5px;
+        color: var(--ink-faint);
+        text-align: center;
+        font-family: var(--mono);
+      }
+
+      /* ─── proof ─────────────────────────────────────────────────────────── */
+      .proof { display: grid; grid-template-columns: 1.05fr 1fr; gap: 46px; align-items: center; }
+      @media (max-width: 940px) { .proof { grid-template-columns: 1fr; gap: 30px; } }
+      .proof-list { display: grid; gap: 2px; margin-top: 28px; }
+      .proof-row {
+        display: grid;
+        grid-template-columns: 88px 1fr;
+        gap: 18px;
+        padding: 16px 0;
+        border-top: 1px solid var(--line);
+        align-items: baseline;
+      }
+      .proof-row b { font-family: var(--mono); font-size: 20px; letter-spacing: -0.03em; color: var(--accent); }
+      .proof-row span { color: var(--ink-soft); font-size: 14.5px; }
+      .proof-row span strong { color: var(--ink); font-weight: 600; }
+
+      /* ─── capabilities ──────────────────────────────────────────────────── */
+      .packs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 30px; }
+      .pack {
+        padding: 7px 13px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--ink-soft);
+      }
+      .pack b { color: var(--ink); }
+
+      /* ─── downloads ─────────────────────────────────────────────────────── */
+      .downloads { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 40px; }
+      @media (max-width: 860px) { .downloads { grid-template-columns: 1fr; } }
+      .dl {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 26px;
+        border-radius: var(--radius);
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, var(--surface-strong), transparent 150%);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        transition: border-color 0.3s, transform 0.4s var(--ease);
+      }
+      .dl:hover { border-color: var(--accent-line); transform: translateY(-2px); }
+      .dl header { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+      .dl h3 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
+      .dl .os { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+      .dl p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+      .dl .meta { display: flex; gap: 14px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); flex-wrap: wrap; }
+      .dl .actions { display: flex; gap: 10px; margin-top: auto; flex-wrap: wrap; }
+      .dl .btn { padding: 9px 15px; font-size: 13.5px; }
+
+      /* ─── faq ───────────────────────────────────────────────────────────── */
+      details {
+        border-top: 1px solid var(--line);
+        padding: 20px 0;
+      }
+      details summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        cursor: pointer;
+        font-size: 16.5px;
+        font-weight: 560;
+        letter-spacing: -0.015em;
+        list-style: none;
+      }
+      details summary::-webkit-details-marker { display: none; }
+      details summary::after {
+        content: "+";
+        font-family: var(--mono);
+        color: var(--accent);
+        font-size: 19px;
+        transition: transform 0.3s var(--ease);
+      }
+      details[open] summary::after { transform: rotate(45deg); }
+      details p { margin: 12px 0 0; color: var(--ink-soft); font-size: 15px; max-width: 76ch; }
+
+      /* ─── footer ────────────────────────────────────────────────────────── */
+      footer {
+        position: relative;
+        z-index: 1;
+        border-top: 1px solid var(--line);
+        padding: 44px 0 60px;
+        color: var(--ink-faint);
+        font-size: 13.5px;
+      }
+      .footer-inner { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; align-items: center; }
+      .footer-inner a:hover { color: var(--ink); }
+
+      /* ─── reveal ────────────────────────────────────────────────────────── */
+      .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.8s var(--ease), transform 0.8s var(--ease); }
+      .reveal.in { opacity: 1; transform: none; }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+        html { scroll-behavior: auto; }
+        .reveal { opacity: 1; transform: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"></div>
+
+    <header class="nav" id="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="#top">
+          <img src="assets/icon.png" alt="" />
+          <span>carls</span>
+          <span class="dot" aria-hidden="true"></span>
+        </a>
+        <nav class="nav-links" aria-label="Secciones">
+          <a href="#adentro">Adentro</a>
+          <a href="#prueba">Prueba real</a>
+          <a href="#capacidades">Capacidades</a>
+          <a href="#descargas">Descargas</a>
+          <a href="#preguntas">Preguntas</a>
+        </nav>
+        <button class="icon-btn" id="theme" aria-label="Cambiar tema" title="Cambiar tema">
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </svg>
+          <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+          </svg>
+        </button>
+        <a class="btn btn-accent" href="#descargas">
+          Descargar
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 3v13M6 11l6 6 6-6M4 21h16" />
+          </svg>
+        </a>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="wrap">
+          <span class="eyebrow"><b>v0.3.6</b> beta pública · escritorio + terminal</span>
+          <h1>Un agente que <em>termina</em> el trabajo.</h1>
+          <p class="lede">
+            carls lee tu proyecto, edita archivos, ejecuta los tests y verifica hasta que pasan. Corre nativo
+            en tu máquina —sin contenedores—, con tus claves y sin telemetría. La misma sesión vive en el
+            escritorio y en la terminal, así que podés empezar en una ventana y seguir en la otra.
+          </p>
+          <div class="cta">
+            <a class="btn btn-accent" href="#descargas">
+              Descargar para Windows
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M12 3v13M6 11l6 6 6-6M4 21h16" />
+              </svg>
+            </a>
+            <a class="btn" href="#cli">CLI compilada</a>
+          </div>
+          <p class="cta-note">Windows x64 · Linux x64 · sin firmar (beta) · ~125 MB</p>
+
+          <figure class="frame">
+            <div class="frame-inner">
+              <div class="frame-bar"><i></i><i></i><i></i><span>carls — desktop</span></div>
+              <img src="assets/hero.png" alt="Turno real del agente: dos herramientas MCP llamadas, sus resultados y la respuesta final con el hash y el conteo de palabras." />
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <div class="strip">
+        <div class="strip-inner">
+          <div class="strip-track">
+            <span class="stat"><b>845</b> tests propios</span>
+            <span class="stat"><b>71</b> herramientas</span>
+            <span class="stat"><b>12</b> packs</span>
+            <span class="stat"><b>55</b> skills</span>
+            <span class="stat"><b>MCP</b> servidores reales</span>
+            <span class="stat"><b>sub-agentes</b> en paralelo</span>
+            <span class="stat"><b>0</b> dependencias de framework</span>
+          </div>
+          <div class="strip-track" aria-hidden="true">
+            <span class="stat"><b>845</b> tests propios</span>
+            <span class="stat"><b>71</b> herramientas</span>
+            <span class="stat"><b>12</b> packs</span>
+            <span class="stat"><b>55</b> skills</span>
+            <span class="stat"><b>MCP</b> servidores reales</span>
+            <span class="stat"><b>sub-agentes</b> en paralelo</span>
+            <span class="stat"><b>0</b> dependencias de framework</span>
+          </div>
+        </div>
+      </div>
+
+      <section id="adentro">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <span class="kicker">Cómo se ve</span>
+            <h2>El agente a la vista, no una caja negra.</h2>
+            <p>
+              Cada herramienta que el agente llama aparece con su argumento, su duración y su resultado. Si
+              algo falla, el error queda en el transcript —el mismo que el modelo leyó para corregirse—.
+              Estas son capturas de sesiones reales, con crédito real.
+            </p>
+          </div>
+
+          <div class="viewer reveal">
+            <div class="tabs" role="tablist" aria-label="Capturas">
+              <button class="tab" role="tab" aria-selected="true" data-pane="p-sub">Sub-agentes</button>
+              <button class="tab" role="tab" aria-selected="false" data-pane="p-mcp">Servidores MCP</button>
+              <button class="tab" role="tab" aria-selected="false" data-pane="p-files">Explorador</button>
+              <button class="tab" role="tab" aria-selected="false" data-pane="p-light">Tema claro</button>
+            </div>
+            <div class="panes">
+              <figure class="pane" data-pane="p-mcp">
+                <div class="frame">
+                  <div class="frame-inner">
+                    <div class="frame-bar"><i></i><i></i><i></i><span>capabilities · mcp</span></div>
+                    <img loading="lazy" src="assets/mcp-servers.png" alt="La hoja de capacidades mostrando un servidor MCP conectado por stdio con sus dos herramientas." />
+                  </div>
+                </div>
+                <figcaption>un servidor MCP conectado por stdio, con su versión y sus herramientas leídas del motor</figcaption>
+              </figure>
+              <figure class="pane" data-pane="p-sub" data-active="true">
+                <div class="frame">
+                  <div class="frame-inner">
+                    <div class="frame-bar"><i></i><i></i><i></i><span>delegate_task × 3</span></div>
+                    <img loading="lazy" src="assets/subagents.png" alt="Tres tarjetas de delegate_task y el reporte de cada sub-agente en el transcript." />
+                  </div>
+                </div>
+                <figcaption>dos exploradores en paralelo; el agente detectó el error del proveedor y reintentó</figcaption>
+              </figure>
+              <figure class="pane" data-pane="p-files">
+                <div class="frame">
+                  <div class="frame-inner">
+                    <div class="frame-bar"><i></i><i></i><i></i><span>inspector · files</span></div>
+                    <img loading="lazy" src="assets/files.png" alt="El explorador de archivos del workspace con vista previa y números de línea." />
+                  </div>
+                </div>
+                <figcaption>el workspace real, dentro del mismo sandbox que usan las herramientas</figcaption>
+              </figure>
+              <figure class="pane" data-pane="p-light">
+                <div class="frame">
+                  <div class="frame-inner">
+                    <div class="frame-bar"><i></i><i></i><i></i><span>tema claro</span></div>
+                    <img loading="lazy" src="assets/light.png" alt="La misma interfaz en tema claro, sobre papel cálido con vidrio translúcido." />
+                  </div>
+                </div>
+                <figcaption>vidrio real: el fondo se ve a través de cada panel</figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="prueba">
+        <div class="wrap">
+          <div class="proof">
+            <div class="reveal">
+              <span class="kicker">No es una demo</span>
+              <h2>Un Pomodoro de cero, verificado por fuera.</h2>
+              <p class="section-head" style="margin: 0">
+                Le pedí un producto completo desde una carpeta vacía: servidor Node sin dependencias, API con
+                persistencia, interfaz y tests. Trabajó solo, con crédito real. Después lo verifiqué yo, por
+                fuera de la app.
+              </p>
+              <div class="proof-list">
+                <div class="proof-row"><b>19</b><span>llamadas a herramientas: leer, escribir, <strong>bash</strong>, servidores en segundo plano, probes HTTP</span></div>
+                <div class="proof-row"><b>7</b><span>archivos, <strong>474 líneas</strong> en total, sin una sola dependencia</span></div>
+                <div class="proof-row"><b>4/4</b><span>tests propios en verde: <strong>npm test</strong> corrido por mí, no por el agente</span></div>
+                <div class="proof-row"><b>200/201/400/404</b><span>cada ruta probada a mano: sesión creada, validación rechazada, 404 correcto</span></div>
+                <div class="proof-row"><b>25:00</b><span>en un navegador real, el contador bajó a <strong>24:52</strong> al apretar «Iniciar»</span></div>
+              </div>
+            </div>
+            <figure class="frame reveal" style="margin: 0">
+              <div class="frame-inner">
+                <div class="frame-bar"><i></i><i></i><i></i><span>carls-product-live · el pedido</span></div>
+                <img loading="lazy" src="assets/product.png" alt="El pedido completo en un solo mensaje: archivos exactos, rutas de la API y la definición de terminado." />
+              </div>
+            </figure>
+          </div>
+          <p class="section-head reveal" style="margin-top: 34px; color: var(--ink-faint); font-size: 13.5px; font-family: var(--mono)">
+            En ese turno el gateway devolvió una respuesta vacía; el agente lo detectó, saltó al modelo
+            siguiente y lo mostró como advertencia. Ese arreglo salió de esta prueba.
+          </p>
+        </div>
+      </section>
+
+      <section id="capacidades">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <span class="kicker">Capacidades</span>
+            <h2>Herramientas de verdad, no una lista de deseos.</h2>
+            <p>
+              El agente publicita un pack según el trabajo; la ejecución siempre puede llamar al registro
+              completo. Un pack que no se puede alcanzar es peso muerto, y por eso la lista de abajo es la
+              que corre.
+            </p>
+          </div>
+          <div class="grid-3 reveal">
+            <div class="card">
+              <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h7" /></svg></div>
+              <h3>Gather · act · verify</h3>
+              <p>Leer, buscar, editar, aplicar un patch, correr un comando, mirar el diff. El turno no termina en una promesa: termina en la verificación del proyecto.</p>
+            </div>
+            <div class="card">
+              <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></svg></div>
+              <h3>Sub-agentes en paralelo</h3>
+              <p>Un <code>delegate_task</code> abre contextos aislados para explorar, planificar, auditar o implementar, y devuelve un reporte. El contexto principal queda limpio.</p>
+            </div>
+            <div class="card">
+              <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 8h10M7 12h6M5 20V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 4Z" /></svg></div>
+              <h3>MCP, con o sin presets</h3>
+              <p>Servidores MCP por stdio o remotos, agregados desde la app o desde el archivo. Sus herramientas se llaman como cualquier otra y se ven en el transcript.</p>
+            </div>
+          </div>
+
+          <div class="packs reveal" aria-label="Packs de herramientas">
+            <span class="pack"><b>core</b> 11</span>
+            <span class="pack"><b>files</b></span>
+            <span class="pack"><b>multi_edit</b></span>
+            <span class="pack"><b>git</b></span>
+            <span class="pack"><b>data</b></span>
+            <span class="pack"><b>web</b></span>
+            <span class="pack"><b>browser</b></span>
+            <span class="pack"><b>system</b></span>
+            <span class="pack"><b>skills</b></span>
+            <span class="pack"><b>tasks</b></span>
+            <span class="pack"><b>delegate</b></span>
+            <span class="pack"><b>mcp</b> dinámico</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="cli">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <span class="kicker">Compilado, sin fuentes</span>
+            <h2>La CLI viaja como programa, no como código.</h2>
+            <p>
+              El binario de Windows es un único <code>carls.exe</code> con el bundle, las skills y la versión
+              adentro: no necesita Node, ni npm, ni el repositorio. En Linux son dos archivos y el
+              <code>node</code> que ya tenés. En ningún caso se distribuye el TypeScript.
+            </p>
+          </div>
+          <div class="grid-3 reveal">
+            <div class="card">
+              <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5h16v14H4z" /><path d="M8 10l2 2-2 2M12 14h4" /></svg></div>
+              <h3>Una cosa que ejecutar</h3>
+              <p><code>carls.exe -p "arreglá los tests" --yolo</code>. Si querés el comando en el PATH, <code>--install-win</code> lo copia y agrega la carpeta al usuario, sin tocar el sistema.</p>
+            </div>
+            <div class="card">
+              <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3l8 4v6c0 4.4-3.4 7.4-8 8-4.6-.6-8-3.6-8-8V7l8-4Z" /><path d="M9 12l2 2 4-4" /></svg></div>
+              <h3>Mismo motor que el escritorio</h3>
+              <p>La app es un cliente del mismo servidor HTTP + SSE. Un turno abierto en la ventana se puede seguir con <code>carls attach</code>, y una sesión de terminal aparece en la barra lateral.</p>
+            </div>
+            <div class="card">
+              <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10" /></svg></div>
+              <h3>Tu configuración, un archivo</h3>
+              <p><code>.carlsrc.json</code> en la carpeta o en tu home: proveedor, modelo, clave. La CLI y la app leen el mismo, así que configurar una vez alcanza.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="descargas">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <span class="kicker">Descargas</span>
+            <h2>Elegí cómo lo querés.</h2>
+            <p>
+              Todo es la versión <strong>0.3.6</strong>. El escritorio es un instalador por usuario (sin
+              permisos de administrador) o un portable; la CLI es un binario suelto.
+            </p>
+          </div>
+
+          <div class="downloads reveal">
+            <div class="dl">
+              <header>
+                <h3>Escritorio</h3>
+                <span class="os">Windows x64</span>
+              </header>
+              <p>Instalador por usuario: elegís carpeta, accesos en el escritorio y el menú de inicio. Sin admin.</p>
+              <div class="meta"><span>~125 MB</span><span>NSIS</span><span>sin firmar</span></div>
+              <div class="actions">
+                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-0.3.6-win-x64-setup.exe">Descargar .exe</a>
+                <a class="btn" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-0.3.6-win-x64.zip">Portable .zip</a>
+              </div>
+            </div>
+
+            <div class="dl">
+              <header>
+                <h3>Escritorio</h3>
+                <span class="os">Linux x64</span>
+              </header>
+              <p>Tar con el binario y sus dependencias. Las instrucciones están en el <code>README-linux.txt</code> del paquete.</p>
+              <div class="meta"><span>~131 MB</span><span>tar.gz</span><span>sin firmar</span></div>
+              <div class="actions">
+                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-0.3.6-linux-x64.tar.gz">Descargar .tar.gz</a>
+              </div>
+            </div>
+
+            <div class="dl">
+              <header>
+                <h3>CLI</h3>
+                <span class="os">Windows x64</span>
+              </header>
+              <p>Un solo <code>carls.exe</code> con todo adentro. No necesita Node ni el repositorio.</p>
+              <div class="meta"><span>~38 MB</span><span>zip</span><span>binario único</span></div>
+              <div class="actions">
+                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-CLI-0.3.6-win-x64.zip">Descargar .zip</a>
+              </div>
+            </div>
+
+            <div class="dl">
+              <header>
+                <h3>CLI</h3>
+                <span class="os">Linux x64</span>
+              </header>
+              <p>El bundle compilado y un launcher; usa el <code>node</code> 20+ que ya tengas instalado.</p>
+              <div class="meta"><span>~540 KB</span><span>tar.gz</span><span>requiere node</span></div>
+              <div class="actions">
+                <a class="btn btn-accent" href="https://github.com/carlscodev/carls/releases/download/v0.3.6/Carls-CLI-0.3.6-linux-x64.tar.gz">Descargar .tar.gz</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-head reveal" style="margin-top: 34px">
+            <p style="font-size: 14px; color: var(--ink-faint)">
+              <strong>Sin firma de código.</strong> Windows SmartScreen advierte la primera vez y no hay
+              actualización silenciosa: la app te avisa cuando hay una versión nueva y la bajás vos.
+              <a href="#preguntas" style="color: var(--accent)">Por qué.</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="seguridad">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <span class="kicker">Confianza</span>
+            <h2>Tu máquina, tus claves, tu sesión.</h2>
+          </div>
+          <div class="grid-3 reveal">
+            <div class="card">
+              <h3>Nada sale de acá</h3>
+              <p>No hay telemetría ni servicio intermedio. El único tráfico es el que va al proveedor de modelo que configuraste, con la clave que pusiste.</p>
+            </div>
+            <div class="card">
+              <h3>Herramientas encerradas</h3>
+              <p>Los archivos y el shell quedan dentro del workspace salvo que habilites explícitamente lo contrario. Los enlaces simbólicos que escapan se rechazan.</p>
+            </div>
+            <div class="card">
+              <h3>Aprobaciones reales</h3>
+              <p>En modo <code>ask</code> cada escritura y cada comando se aprueba con el permiso exacto que pidió el motor, desde la ventana o desde la terminal.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="preguntas">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <span class="kicker">Preguntas</span>
+            <h2>Lo que conviene saber antes.</h2>
+          </div>
+          <div class="reveal" style="margin-top: 30px">
+            <details>
+              <summary>¿El código es abierto?</summary>
+              <p>No. El repositorio es privado desde esta versión. Lo que se distribuye son los binarios compilados: el <code>.exe</code> de la CLI, el instalador del escritorio y los paquetes de Linux. Si necesitás auditar el código para tu empresa, escribinos.</p>
+            </details>
+            <details>
+              <summary>¿Por qué aparece SmartScreen?</summary>
+              <p>Porque el build no está firmado: no hay certificado de code signing. Firmar cuesta un certificado anual y, sin él, Windows advierte ante un ejecutable desconocido. Firmar está pendiente; mientras tanto, el aviso es esperable y no significa que el archivo esté alterado.</p>
+            </details>
+            <details>
+              <summary>¿Se actualiza solo?</summary>
+              <p>No. La app consulta un archivo de versión en esta página y, si hay una versión nueva, muestra un aviso con el enlace. La descarga y la instalación las hacés vos. Un actualizador silencioso que no puede verificar la firma del editor falla en el último paso, y eso es peor que no tenerlo.</p>
+            </details>
+            <details>
+              <summary>¿Qué proveedores de modelo acepta?</summary>
+              <p>Cualquier endpoint compatible con la API de OpenAI, más Anthropic y Google. Configurás URL base, clave y modelo; si el gateway expone <code>/models</code>, la app lista los modelos disponibles sin que los inventemos.</p>
+            </details>
+            <details>
+              <summary>¿Funciona sin internet?</summary>
+              <p>El agente necesita el proveedor de modelo, así que no. Todo lo demás —herramientas, archivos, tests, git, la interfaz— corre local.</p>
+            </details>
+            <details>
+              <summary>¿Linux está probado?</summary>
+              <p>El paquete se arma desde Windows: verifiqué contenido, permisos y dependencias, pero no lo ejecuté en un host Linux. Si lo probás y algo falla, mandanos el error.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap footer-inner">
+        <span>carls · v0.3.6 · beta — construido y verificado en Windows</span>
+        <span>
+          <a href="#top">Arriba</a> ·
+          <a href="https://github.com/carlscodev/carls/releases">Versiones</a> ·
+          <a href="mailto:hola@carls.dev">hola@carls.dev</a>
+        </span>
+      </div>
+    </footer>
+
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const stored = localStorage.getItem("carls-theme");
+        if (stored === "light" || stored === "dark") root.dataset.theme = stored;
+
+        document.getElementById("theme").addEventListener("click", () => {
+          const next = root.dataset.theme === "dark" ? "light" : "dark";
+          const apply = () => {
+            root.dataset.theme = next;
+            localStorage.setItem("carls-theme", next);
+            document.querySelector('meta[name="theme-color"]').setAttribute("content", next === "dark" ? "#000000" : "#f2f1ec");
+          };
+          // A view transition makes the palette swap read as one surface changing
+          // colour instead of every element repainting at its own pace.
+          if (document.startViewTransition !== undefined) document.startViewTransition(apply);
+          else apply();
+        });
+
+        const nav = document.getElementById("nav");
+        const onScroll = () => nav.classList.toggle("scrolled", window.scrollY > 8);
+        onScroll();
+        window.addEventListener("scroll", onScroll, { passive: true });
+
+        for (const tab of document.querySelectorAll(".tab")) {
+          tab.addEventListener("click", () => {
+            for (const other of document.querySelectorAll(".tab")) other.setAttribute("aria-selected", String(other === tab));
+            for (const pane of document.querySelectorAll(".pane")) {
+              pane.dataset.active = String(pane.dataset.pane === tab.dataset.pane);
+            }
+          });
+        }
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("in");
+                observer.unobserve(entry.target);
+              }
+            }
+          },
+          { rootMargin: "0px 0px -12% 0px", threshold: 0.08 },
+        );
+        for (const element of document.querySelectorAll(".reveal")) observer.observe(element);
+      })();
+    </script>
+  </body>
+</html>
